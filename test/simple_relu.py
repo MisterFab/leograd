@@ -1,6 +1,8 @@
+import sys
+sys.path.append('C:/Users/leona/python/leograd')
+from tensor import Tensor
 import torch
 import numpy as np
-from tensor import Tensor
 import time
 
 a_vals = [2.0, -1.0, 0.0, 3.0, -2.0, 4.0, -3.5, 1.5, -4.5, 0.5]
