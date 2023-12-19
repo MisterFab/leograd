@@ -1,3 +1,5 @@
+import numpy as np
+
 class AutogradContext:
     def __init__(self):
         self.saved_tensors = ()
@@ -27,9 +29,20 @@ class Multiply(Function):
         grad_b = grad_output * a.data
         return grad_a, grad_b
 
+class ReLU(Function):
+    @staticmethod
+    def forward(ctx, inp):
+        ctx.save_for_backward(inp)
+        return inp.data * (inp.data > 0)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        inp, = ctx.get_saved_tensors()
+        return grad_output * (inp.data > 0)
+
 class Tensor:
     def __init__(self, data, creator=None, ctx=None):
-        self.data = data
+        self.data = np.array(data) if isinstance(data, list) else data
         self.grad = None
         self.creator = creator
         self.ctx = ctx
@@ -63,3 +76,7 @@ class Tensor:
                 self.grad = grad_output
             else:
                 self.grad += grad_output
+    
+    def relu(self):
+        f = ReLU()
+        return f(self)
