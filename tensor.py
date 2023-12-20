@@ -61,6 +61,13 @@ class Tensor:
         f = Sigmoid()
         return f(self)
     
+    def reshape(self, *shape):
+        if len(shape) == 1 and isinstance(shape[0], tuple):
+            new_shape = shape[0]
+        else:
+            new_shape = shape
+        return Tensor(np.reshape(self.data, new_shape))
+    
     @staticmethod
     def kaiming_uniform(n_inputs, n_outputs):
         limit = np.sqrt(6 / n_inputs)
@@ -162,6 +169,28 @@ class BinaryCrossEntropy(Function):
         inp, target = ctx.get_saved_tensors()
         epsilon = 1e-12
         inp_safe = np.clip(inp.data, epsilon, 1 - epsilon)
-        grad_inp = (inp_safe - target.data) / (inp_safe * (1 - inp_safe)) / inp.data.size
+        grad_inp = (inp_safe - target.data) / (inp_safe * (1 - inp_safe)) * grad_output
         grad_target = -grad_inp
         return grad_inp, grad_target
+
+class CrossEntropy(Function):
+    @staticmethod
+    def forward(ctx, inp, target):
+        ctx.save_for_backward(inp, target)
+        num_classes = inp.data.shape[1]
+
+        target_one_hot = np.eye(num_classes)[target.data]
+        epsilon = 1e-12
+        inp_safe = np.clip(inp.data, epsilon, 1 - epsilon)
+        result = -np.sum(target_one_hot * np.log(inp_safe), axis=1).mean()
+        return result
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        inp, target = ctx.get_saved_tensors()
+        batch_size = inp.data.shape[0]
+        num_classes = inp.data.shape[1]
+
+        target_one_hot = np.eye(num_classes)[target.data]
+        grad_inp = (inp.data - target_one_hot) / batch_size * grad_output
+        return grad_inp
