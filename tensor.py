@@ -1,8 +1,11 @@
 import numpy as np
 
-class AutogradContext:
+class Context:
     def __init__(self):
         self.saved_tensors = ()
+    
+    def __repr__(self):
+        return f"Context({self.saved_tensors})"
     
     def save_for_backward(self, *tensors):
         self.saved_tensors = tensors
@@ -12,46 +15,43 @@ class AutogradContext:
 
 class Function:
     def __call__(self, *args, **kwargs):
-        ctx = AutogradContext()
-        result = self.forward(ctx, *args, **kwargs)
-        return Tensor(result, self, ctx)
+        context = Context()
+        result = self.forward(context, *args, **kwargs)
+        return Tensor(result, self, context)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}()"
 
 class Tensor:
-    def __init__(self, data, creator=None, ctx=None, dtype=np.float32):
+    def __init__(self, data, creator=None, context=None, dtype=np.float32):
         self.data = np.array(data, dtype=dtype) if isinstance(data, list) else data
         self.grad = None
         self.creator = creator
-        self.ctx = ctx
+        self.context = context
     
     def __repr__(self):
         return f"Tensor({self.data})"
     
     def __mul__(self, other):
         if isinstance(other, Tensor):
-            f = Multiply()
-            return f(self, other)
+            multiplication_function = Multiply()
+            return multiplication_function(self, other)
         else:
             return Tensor(self.data * other)
 
     def backward(self, grad_output=None):
         if grad_output is None:
-            if self.grad is None:
-                grad_output = 1
-            else:
-                grad_output = self.grad
+            grad_output = 1 if self.grad is None else self.grad
 
         if self.creator:
-            grads = self.creator.backward(self.ctx, grad_output)
-            if not isinstance(grads, tuple):
-                grads = (grads,)
+            gradients = self.creator.backward(self.context, grad_output)
+            if not isinstance(gradients, tuple):
+                gradients = (gradients,)
 
-            for grad, inp in zip(grads, self.ctx.get_saved_tensors()):
-                inp.backward(grad)
+            for gradient, input_tensor in zip(gradients, self.context.get_saved_tensors()):
+                input_tensor.backward(gradient)
         else:
-            if self.grad is None:
-                self.grad = grad_output
-            else:
-                self.grad += grad_output
+            self.grad = grad_output if self.grad is None else self.grad + grad_output
     
     def relu(self):
         f = ReLU()
@@ -62,135 +62,141 @@ class Tensor:
         return f(self)
     
     def reshape(self, *shape):
-        if len(shape) == 1 and isinstance(shape[0], tuple):
-            new_shape = shape[0]
-        else:
-            new_shape = shape
+        new_shape = shape[0] if len(shape) == 1 and isinstance(shape[0], tuple) else shape
         return Tensor(np.reshape(self.data, new_shape))
     
     @staticmethod
-    def kaiming_uniform(n_inputs, n_outputs):
-        limit = np.sqrt(6 / n_inputs)
-        return np.random.uniform(low=-limit, high=limit, size=(n_inputs, n_outputs))
+    def kaiming_uniform(input_dim, output_dim):
+        limit = np.sqrt(6 / input_dim)
+        return np.random.uniform(low=-limit, high=limit, size=(input_dim, output_dim))
 
 class Multiply(Function):
     @staticmethod
-    def forward(ctx, a, b):
-        ctx.save_for_backward(a, b)
-        return a.data * b.data
+    def forward(ctx, tensor_a, tensor_b):
+        ctx.save_for_backward(tensor_a, tensor_b)
+        return tensor_a.data * tensor_b.data
 
     @staticmethod
     def backward(ctx, grad_output):
-        a, b = ctx.get_saved_tensors()
-        grad_a = grad_output * b.data
-        grad_b = grad_output * a.data
-        return grad_a, grad_b
-
-class ReLU(Function):
-    @staticmethod
-    def forward(ctx, inp):
-        ctx.save_for_backward(inp)
-        return inp.data * (inp.data > 0)
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        inp, = ctx.get_saved_tensors()
-        return grad_output * (inp.data > 0)
+        tensor_a, tensor_b = ctx.get_saved_tensors()
+        grad_tensor_a = grad_output * tensor_b.data
+        grad_tensor_b = grad_output * tensor_a.data
+        return grad_tensor_a, grad_tensor_b
 
 class ReLU(Function):
     @staticmethod
-    def forward(ctx, inp):
-        ctx.save_for_backward(inp)
-        return inp.data * (inp.data > 0)
+    def forward(ctx, input_tensor):
+        ctx.save_for_backward(input_tensor)
+        return np.maximum(0, input_tensor.data)
     
     @staticmethod
     def backward(ctx, grad_output):
-        inp, = ctx.get_saved_tensors()
-        return grad_output * (inp.data > 0)
+        input_tensor, = ctx.get_saved_tensors()
+        return grad_output * (input_tensor.data > 0)
     
 class Sigmoid(Function):
     @staticmethod
-    def forward(ctx, inp):
-        inp_safe = np.clip(inp.data, -100, 100)
-        out = 1 / (1 + np.exp(-inp_safe))
-        ctx.save_for_backward(inp)
-        return out
+    def forward(ctx, input_tensor):
+        ctx.save_for_backward(input_tensor)
+        sigmoid_input = np.clip(input_tensor.data, -100, 100)
+        return 1 / (1 + np.exp(-sigmoid_input))
     
     @staticmethod
     def backward(ctx, grad_output):
-        inp, = ctx.get_saved_tensors()
-        sigmoid_output = 1 / (1 + np.exp(-np.clip(inp.data, -100, 100)))
+        input_tensor, = ctx.get_saved_tensors()
+        sigmoid_output = 1 / (1 + np.exp(-np.clip(input_tensor.data, -100, 100)))
         return grad_output * sigmoid_output * (1 - sigmoid_output)
 
 class Linear(Function):
     @staticmethod
-    def forward(ctx, inp, weight, bias = None):
-        ctx.save_for_backward(inp, weight, bias)
-        output = inp.data.dot(weight.data)
-        if bias is not None:
-            output += bias.data
+    def forward(ctx, input_tensor, weight_tensor, bias_tensor=None):
+        ctx.save_for_backward(input_tensor, weight_tensor, bias_tensor)
+        output = input_tensor.data.dot(weight_tensor.data)
+        if bias_tensor is not None:
+            output += bias_tensor.data
         return output
 
     @staticmethod
     def backward(ctx, grad_output):
-        inp, weight, bias = ctx.get_saved_tensors()
-        grad_inp = grad_output.dot(weight.data.T)
-        grad_weight = inp.data.T.dot(grad_output)
-        grad_bias = None
-        if bias is not None:
-            grad_bias = grad_output.sum(axis=0)
-        return grad_inp, grad_weight, grad_bias
+        input_tensor, weight_tensor, bias_tensor = ctx.get_saved_tensors()
+        grad_input = grad_output.dot(weight_tensor.data.T)
+        grad_weight = input_tensor.data.T.dot(grad_output)
+        grad_bias = grad_output.sum(axis=0) if bias_tensor is not None else None
+        return grad_input, grad_weight, grad_bias
 
 class MeanSquaredError(Function):
     @staticmethod
-    def forward(ctx, inp, target):
-        ctx.save_for_backward(inp, target)
-        epsilon = 1e-8
-        return np.square(inp.data - target.data + epsilon).mean()
+    def forward(ctx, input_tensor, target_tensor):
+        ctx.save_for_backward(input_tensor, target_tensor)
+        error_margin = 1e-8
+        return np.square(input_tensor.data - target_tensor.data + error_margin).mean()
 
     @staticmethod
     def backward(ctx, grad_output):
-        inp, target = ctx.get_saved_tensors()
-        grad = 2 * (inp.data - target.data) / inp.data.size
-        grad_inp = grad * grad_output
-        grad_target = -grad_inp
-        return grad_inp, grad_target
+        input_tensor, target_tensor = ctx.get_saved_tensors()
+        grad = 2 * (input_tensor.data - target_tensor.data) / input_tensor.data.size
+        grad_input = grad * grad_output
+        grad_target = -grad_input
+        return grad_input, grad_target
 
 class BinaryCrossEntropy(Function):
     @staticmethod
-    def forward(ctx, inp, target):
-        ctx.save_for_backward(inp, target)
+    def forward(ctx, input_tensor, target_tensor):
         epsilon = 1e-12
-        inp_safe = np.clip(inp.data, epsilon, 1 - epsilon)
-        return -(target.data * np.log(inp_safe) + (1 - target.data) * np.log(1 - inp_safe)).mean()
+        input_tensor.data = np.clip(input_tensor.data, epsilon, 1 - epsilon)
+        ctx.save_for_backward(input_tensor, target_tensor)
+        return -(target_tensor.data * np.log(input_tensor.data) + (1 - target_tensor.data) * np.log(1 - input_tensor.data)).mean()
 
     @staticmethod
     def backward(ctx, grad_output):
-        inp, target = ctx.get_saved_tensors()
-        epsilon = 1e-12
-        inp_safe = np.clip(inp.data, epsilon, 1 - epsilon)
-        grad_inp = (inp_safe - target.data) / (inp_safe * (1 - inp_safe)) * grad_output
-        grad_target = -grad_inp
-        return grad_inp, grad_target
+        input_tensor, target_tensor = ctx.get_saved_tensors()
+        grad_input = (input_tensor.data - target_tensor.data) / (input_tensor.data * (1 - input_tensor.data)) * grad_output
+        grad_target = -grad_input
+        return grad_input, grad_target
+ 
+class LogSoftmax(Function):
+    @staticmethod
+    def forward(ctx, input_tensor):
+        ctx.save_for_backward(input_tensor)
+        input_max = np.max(input_tensor.data, axis=1, keepdims=True)
+        shifted_inputs = input_tensor.data - input_max
+        exp_shifted = np.exp(shifted_inputs)
+        log_sum_exp = np.log(np.sum(exp_shifted, axis=1, keepdims=True))
+        return shifted_inputs - log_sum_exp
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input_tensor, = ctx.get_saved_tensors()
+        softmax_output = np.exp(input_tensor.data - np.max(input_tensor.data, axis=1, keepdims=True))
+        softmax_output /= np.sum(softmax_output, axis=1, keepdims=True)
+        return grad_output - softmax_output * np.sum(grad_output, axis=1, keepdims=True)
+
+class NLLLoss(Function):
+    @staticmethod
+    def forward(ctx, input_tensor, target):
+        ctx.save_for_backward(input_tensor, target)
+        correct_log_probs = input_tensor.data[np.arange(target.data.shape[0]), target.data]
+        return -np.mean(correct_log_probs)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input_tensor, target = ctx.get_saved_tensors()
+        grad_input = np.zeros_like(input_tensor.data)
+        grad_input[np.arange(target.data.shape[0]), target.data] = -1 / target.data.shape[0] * grad_output
+        return grad_input, target   
 
 class CrossEntropy(Function):
     @staticmethod
-    def forward(ctx, inp, target):
-        ctx.save_for_backward(inp, target)
-        num_classes = inp.data.shape[1]
-
-        target_one_hot = np.eye(num_classes)[target.data]
-        epsilon = 1e-12
-        inp_safe = np.clip(inp.data, epsilon, 1 - epsilon)
-        result = -np.sum(target_one_hot * np.log(inp_safe), axis=1).mean()
-        return result
-
+    def forward(ctx, input_tensor, target_tensor):
+        f = LogSoftmax()
+        log_softmax = f(input_tensor)
+        f = NLLLoss()
+        loss = f(log_softmax, target_tensor)
+        ctx.save_for_backward(loss)
+        return loss.data
+    
     @staticmethod
     def backward(ctx, grad_output):
-        inp, target = ctx.get_saved_tensors()
-        batch_size = inp.data.shape[0]
-        num_classes = inp.data.shape[1]
-
-        target_one_hot = np.eye(num_classes)[target.data]
-        grad_inp = (inp.data - target_one_hot) / batch_size * grad_output
-        return grad_inp
+        input_tensor, = ctx.get_saved_tensors()
+        grad_input = input_tensor.data * grad_output
+        return grad_input
