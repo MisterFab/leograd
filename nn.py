@@ -1,5 +1,4 @@
-from tensor import Tensor, Linear
-
+from tensor import Tensor, LinearFunction
 import numpy as np
 
 class Module:
@@ -24,13 +23,13 @@ class Layer:
     def __call__(self, *args):
         return self.forward(*args)
 
-class Dense(Layer):
+class Linear(Layer):
     def __init__(self, n_inputs, n_outputs):
         self.weights = Tensor(Tensor.kaiming_uniform(n_inputs, n_outputs))
         self.bias = Tensor(np.zeros(n_outputs))
     
     def forward(self, inp):
-        f = Linear()
+        f = LinearFunction()
         return f(inp, self.weights, self.bias)
     
     def parameters(self):

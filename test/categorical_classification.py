@@ -1,8 +1,8 @@
 import sys
 sys.path.append('C:/Users/leona/python/leograd')
-from tensor import Tensor, CrossEntropy
-from nn import Module, Dense
-from optim import SGD
+from tensor import Tensor, CrossEntropyLoss
+from nn import Module, Linear
+from optim import SGD, Adam
 from utils import EarlyStopping
 
 import torch
@@ -23,8 +23,8 @@ def train_custom(x_train, y_train, x_val, y_val, batch_size=16):
     class CategoricalClassification(Module):
         def __init__(self):
             super().__init__()
-            self.linear1 = Dense(20, 64)
-            self.linear2 = Dense(64, 5)
+            self.linear1 = Linear(20, 64)
+            self.linear2 = Linear(64, 5)
 
         def forward(self, x):
             x = self.linear1(x).relu()
@@ -33,8 +33,8 @@ def train_custom(x_train, y_train, x_val, y_val, batch_size=16):
 
     model = CategoricalClassification()
     epochs = 1000
-    loss_function = CrossEntropy()
-    optimizer = SGD(model.parameters(), lr=0.01)
+    loss_function = CrossEntropyLoss()
+    optimizer = Adam(model.parameters(), lr=0.001)
     early_stopping = EarlyStopping(patience=20, min_delta=0.001)
 
     for epoch in range(epochs):
@@ -85,7 +85,7 @@ def train_pytorch(x_train, y_train, x_val, y_val, batch_size=64):
 
     epochs = 1000
     loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=0.01)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
     early_stopping = EarlyStopping(patience=20, min_delta=0.001)
 
     train_dataset = TensorDataset(torch.tensor(x_train, dtype=torch.float32), torch.tensor(y_train, dtype=torch.long))

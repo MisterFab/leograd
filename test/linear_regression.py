@@ -1,7 +1,7 @@
 import sys
 sys.path.append('C:/Users/leona/python/leograd')
 from tensor import Tensor, MeanSquaredError
-from nn import Module, Dense
+from nn import Module, Linear
 from optim import SGD
 
 import torch
@@ -22,8 +22,8 @@ def train_custom(x_data, y_data, batch_size=64):
     class LinearRegression(Module):
         def __init__(self):
             super().__init__()
-            self.linear1 = Dense(10, 32)
-            self.linear2 = Dense(32, 1)
+            self.linear1 = Linear(10, 32)
+            self.linear2 = Linear(32, 1)
 
         def forward(self, x):
             x = self.linear1(x)

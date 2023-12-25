@@ -24,6 +24,8 @@ class Function:
 
 class Tensor:
     def __init__(self, data, creator=None, context=None, dtype=np.float32):
+        if not isinstance(data, (np.ndarray, list, int, float)):
+            raise TypeError("Data must be a numpy.ndarray or a list.")
         self.data = np.array(data, dtype=dtype) if isinstance(data, list) else data
         self.grad = None
         self.creator = creator
@@ -107,7 +109,7 @@ class Sigmoid(Function):
         sigmoid_output = 1 / (1 + np.exp(-np.clip(input_tensor.data, -100, 100)))
         return grad_output * sigmoid_output * (1 - sigmoid_output)
 
-class Linear(Function):
+class LinearFunction(Function):
     @staticmethod
     def forward(ctx, input_tensor, weight_tensor, bias_tensor=None):
         ctx.save_for_backward(input_tensor, weight_tensor, bias_tensor)
@@ -185,7 +187,7 @@ class NLLLoss(Function):
         grad_input[np.arange(target.data.shape[0]), target.data] = -1 / target.data.shape[0] * grad_output
         return grad_input, target   
 
-class CrossEntropy(Function):
+class CrossEntropyLoss(Function):
     @staticmethod
     def forward(ctx, input_tensor, target_tensor):
         f = LogSoftmax()
